@@ -1,8 +1,20 @@
+#include <Arduino.h>
 #include <Wire.h>
 #include "MAX30105.h"
 #include <WiFi.h>
-#include "secrets.h"
-#include "ThingSpeak.h"
+// #include "secrets.h"
+// #include "ThingSpeak.h"
+
+
+// Use this file to store all of the private credentials 
+// and connection details
+
+#define SECRET_SSID "TAU"		// replace MySSID with your WiFi network name
+#define SECRET_PASS "TAUwifi2014"	// replace MyPassword with your WiFi password
+
+#define SECRET_CH_ID 286388			// replace 0000000 with your channel number
+#define SECRET_WRITE_APIKEY "4F1G5MHHPUGSASRY"   // replace XYZ with your channel write API Key
+
 
 MAX30105 particleSensor;
 
@@ -42,7 +54,7 @@ void setup() {
   particleSensor.setup(ledBrightness, sampleAverage, ledMode, sampleRate, pulseWidth, adcRange);
 
   WiFi.mode(WIFI_STA);
-  ThingSpeak.begin(client);
+  // ThingSpeak.begin(client);
 }
 
 void loop() {
@@ -82,11 +94,11 @@ void loop() {
   unsigned long currentMillis = millis();
   if (currentMillis - previousMillis >= interval) {
     previousMillis = currentMillis;
-    int x = ThingSpeak.writeField(myChannelNumber, 1, beatAvg, myWriteAPIKey);
-    if (x == 200) {
-      Serial.println("Channel update successful.");
-    } else {
-      Serial.println("Problem updating channel. HTTP error code " + String(x));
-    }
+    // int x = ThingSpeak.writeField(myChannelNumber, 1, beatAvg, myWriteAPIKey);
+    // if (x == 200) {
+    //   Serial.println("Channel update successful.");
+    // } else {
+    //   Serial.println("Problem updating channel. HTTP error code " + String(x));
+    // }
   }
 }
