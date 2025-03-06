@@ -4,8 +4,8 @@
 #include <WiFi.h>
 #include <ArduinoJson.h>
 
-#define SECRET_SSID "SUPERONLINE_WiFi_2704"		// replace MySSID with your WiFi network name
-#define SECRET_PASS "HATWK4CHPVAW"	// replace MyPassword with your WiFi password
+#define SECRET_SSID "SUPERONLINE_WiFi_2704"		// replace SSID with your WiFi network name
+#define SECRET_PASS "HATWK4CHPVAW"	// replace Password with your WiFi password
 
 MAX30105 particleSensor;
 
@@ -72,7 +72,7 @@ void HR(){
 }
 void loop() {
   HR();
-  GSR();
+  //GSR();
 
   if (WiFi.status() != WL_CONNECTED) {
     Serial.print("Attempting to connect to SSID: ");
