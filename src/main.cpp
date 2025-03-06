@@ -2,19 +2,10 @@
 #include <Wire.h>
 #include "MAX30105.h"
 #include <WiFi.h>
-// #include "secrets.h"
-// #include "ThingSpeak.h"
+#include <ArduinoJson.h>
 
-
-// Use this file to store all of the private credentials 
-// and connection details
-
-#define SECRET_SSID "TAU"		// replace MySSID with your WiFi network name
-#define SECRET_PASS "TAUwifi2014"	// replace MyPassword with your WiFi password
-
-#define SECRET_CH_ID 286388			// replace 0000000 with your channel number
-#define SECRET_WRITE_APIKEY "4F1G5MHHPUGSASRY"   // replace XYZ with your channel write API Key
-
+#define SECRET_SSID "SUPERONLINE_WiFi_2704"		// replace MySSID with your WiFi network name
+#define SECRET_PASS "HATWK4CHPVAW"	// replace MyPassword with your WiFi password
 
 MAX30105 particleSensor;
 
@@ -22,11 +13,8 @@ char ssid[] = SECRET_SSID;   // WiFi SSID
 char pass[] = SECRET_PASS;   // WiFi Password
 WiFiClient client;
 
-unsigned long myChannelNumber = SECRET_CH_ID;
-const char * myWriteAPIKey = SECRET_WRITE_APIKEY;
-
 unsigned long previousMillis = 0;
-const long interval = 1000; // 20 saniye
+const long interval = 20000; // 20 saniye
 
 const byte RATE_SIZE = 4; // Ortalama hesaplamak için kullanılacak örnek sayısı
 byte rates[RATE_SIZE]; // Kalp atış hızlarını saklamak için dizi
@@ -56,8 +44,10 @@ void setup() {
   WiFi.mode(WIFI_STA);
   // ThingSpeak.begin(client);
 }
+// void GSR(){
 
-void loop() {
+// }
+void HR(){
   long irValue = particleSensor.getIR();
 
   if (irValue > 50000) { // IR değeri belirli bir eşik değerini aşarsa kalp atışını algıla
@@ -79,6 +69,10 @@ void loop() {
 
   Serial.print("BPM: ");
   Serial.println(beatAvg);
+}
+void loop() {
+  HR();
+  GSR();
 
   if (WiFi.status() != WL_CONNECTED) {
     Serial.print("Attempting to connect to SSID: ");
@@ -92,13 +86,5 @@ void loop() {
   }
 
   unsigned long currentMillis = millis();
-  if (currentMillis - previousMillis >= interval) {
-    previousMillis = currentMillis;
-    // int x = ThingSpeak.writeField(myChannelNumber, 1, beatAvg, myWriteAPIKey);
-    // if (x == 200) {
-    //   Serial.println("Channel update successful.");
-    // } else {
-    //   Serial.println("Problem updating channel. HTTP error code " + String(x));
-    // }
-  }
+
 }
