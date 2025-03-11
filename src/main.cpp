@@ -43,8 +43,8 @@ void setup() {
 }
 // gsr example kodundan da buraya gsr değerini return eden fonksiyon eklenecek 
 // double GSR(){
-
 // }
+
 //HR fonksiyonu burada sadece ortalama nabzı hesaplayıyor
 double HR(){
   long irValue = particleSensor.getIR();
@@ -70,21 +70,35 @@ double HR(){
   Serial.println(beatAvg);
   return(beatAvg);
 }
-void loop() {
-  HR();
-  //GSR();
-
+// wifi bağlantısını kontrol eden kodu direkt loopun içine yazmak yerine bağlantıyı kontrol eden bir fonksiyon oluşturduk
+void checkWiFiConnection() {
   if (WiFi.status() != WL_CONNECTED) {
-    Serial.print("Attempting to connect to SSID: ");
-    Serial.println(SECRET_SSID);
-    while (WiFi.status() != WL_CONNECTED) {
-      WiFi.begin(ssid, pass);
+    Serial.print("Reconnecting to WiFi...");
+    WiFi.begin(ssid, pass);
+    int attempt = 0;
+    while (WiFi.status() != WL_CONNECTED && attempt < 10) { // 10 kere denesin
+      delay(1000);
       Serial.print(".");
-      delay(5000);
+      attempt++;
     }
-    Serial.println("\nConnected.");
+    if (WiFi.status() == WL_CONNECTED) {
+      Serial.println("Connected!");
+    } else {
+      Serial.println("Failed to connect.");
+    }
   }
+  
+}
+void loop() {
+  //GSR();
+  StaticJsonDocument<200> data;
+  data["HR"] = HR();
+  data["GSR"] = GSR();
 
+  String jsonString;
+  serializeJson(data, jsonString);
+
+  checkWiFiConnection();
   unsigned long currentMillis = millis();
 
 }
