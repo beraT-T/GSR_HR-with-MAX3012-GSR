@@ -1,27 +1,26 @@
 #include <Arduino.h>
-#include <Wire.h>
+#include <Wire.h> //i2c haberleşmesi için
 #include "MAX30105.h"
 #include <WiFi.h>
 #include <ArduinoJson.h>
 
 #define SECRET_SSID "SUPERONLINE_WiFi_2704"		// replace SSID with your WiFi network name
-#define SECRET_PASS "HATWK4CHPVAW"	// replace Password with your WiFi password
-
-MAX30105 particleSensor;
-
+#define SECRET_PASS "HATWK4CHPVAW"	         // replace Password with your WiFi password
 char ssid[] = SECRET_SSID;   // WiFi SSID
 char pass[] = SECRET_PASS;   // WiFi Password
 WiFiClient client;
 
-unsigned long previousMillis = 0;
-const long interval = 20000; // 20 saniye
+MAX30105 particleSensor;
 
 const byte RATE_SIZE = 4; // Ortalama hesaplamak için kullanılacak örnek sayısı
-byte rates[RATE_SIZE]; // Kalp atış hızlarını saklamak için dizi
+byte rates[RATE_SIZE];    // Kalp atış hızlarını saklamak için dizi
 byte rateSpot = 0;
 long lastBeat = 0;
 float beatsPerMinute;
-int beatAvg;
+int beatAvg;              //gönderilecek veriler 1 ortalama nabız 
+
+unsigned long previousMillis = 0;
+const long interval = 20000; // upload intervali
 
 void setup() {
   Serial.begin(115200);
@@ -38,16 +37,16 @@ void setup() {
   int sampleRate = 100;
   int pulseWidth = 411;
   int adcRange = 4096;
-
   particleSensor.setup(ledBrightness, sampleAverage, ledMode, sampleRate, pulseWidth, adcRange);
 
   WiFi.mode(WIFI_STA);
-  // ThingSpeak.begin(client);
 }
-// void GSR(){
+// gsr example kodundan da buraya gsr değerini return eden fonksiyon eklenecek 
+// double GSR(){
 
 // }
-void HR(){
+//HR fonksiyonu burada sadece ortalama nabzı hesaplayıyor
+double HR(){
   long irValue = particleSensor.getIR();
 
   if (irValue > 50000) { // IR değeri belirli bir eşik değerini aşarsa kalp atışını algıla
@@ -69,6 +68,7 @@ void HR(){
 
   Serial.print("BPM: ");
   Serial.println(beatAvg);
+  return(beatAvg);
 }
 void loop() {
   HR();
