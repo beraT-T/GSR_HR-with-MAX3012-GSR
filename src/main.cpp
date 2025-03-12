@@ -102,4 +102,4 @@ void loop() {
   checkWiFiConnection();
   unsigned long currentMillis = millis();
 
-}
+}//json halledilmiş
