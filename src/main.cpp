@@ -42,8 +42,9 @@ void setup() {
   WiFi.mode(WIFI_STA);
 }
 // gsr example kodundan da buraya gsr değerini return eden fonksiyon eklenecek 
-// double GSR(){
-// }
+double GSR(){
+  return(1000);
+ }
 
 //HR fonksiyonu burada sadece ortalama nabzı hesaplayıyor
 double HR(){
@@ -90,7 +91,7 @@ void checkWiFiConnection() {
   
 }
 void loop() {
-  //GSR();
+
   StaticJsonDocument<200> data;
   data["HR"] = HR();
   data["GSR"] = GSR();
