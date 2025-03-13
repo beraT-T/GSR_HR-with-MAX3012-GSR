@@ -1,3 +1,13 @@
+/**
+ * @file main.cpp
+ * @authors berat(berat_baki@outlook.com),
+ * @brief 
+ * @version 0.1
+ * @date 2025-03-13
+ * 
+ * @copyright Copyright (c) 2025
+ * 
+ */
 #include <Arduino.h>
 #include <Wire.h> //i2c haberleşmesi için
 #include "MAX30105.h"
