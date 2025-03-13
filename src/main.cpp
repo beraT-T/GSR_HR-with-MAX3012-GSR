@@ -3,12 +3,14 @@
 #include "MAX30105.h"
 #include <WiFi.h>
 #include <ArduinoJson.h>
+#include <PubSubClient.h>
 
-#define SECRET_SSID "SUPERONLINE_WiFi_2704"		// replace SSID with your WiFi network name
-#define SECRET_PASS "HATWK4CHPVAW"	         // replace Password with your WiFi password
+#define SECRET_SSID "TurkTelekom_TP7CB8_2.4GHz"		// replace SSID with your WiFi network name
+#define SECRET_PASS "4CM79L9F7Nv9"         // replace Password with your WiFi password
 char ssid[] = SECRET_SSID;   // WiFi SSID
 char pass[] = SECRET_PASS;   // WiFi Password
 WiFiClient client;
+PubSubClient mqttClient(client);
 
 MAX30105 particleSensor;
 
@@ -31,6 +33,14 @@ void setup() {
     while (1);
   }
 
+#define MQTT_BROKER "broker.hivemq.com"
+#define MQTT_PORT 1883
+#define MQTT_TOPIC "esmanur/healthData"
+#define MQTT_USER "hivemq.webclient.1741827367846" 
+#define MQTT_PASS "AS46kt3W0Hqp!RK%b>$a"
+
+
+
   byte ledBrightness = 0x1F;
   byte sampleAverage = 8;
   byte ledMode = 3;
@@ -41,10 +51,34 @@ void setup() {
 
   WiFi.mode(WIFI_STA);
 }
+
+void setupMQTT(){
+  mqttClient.setServer(MQTT_BROKER, MQTT_PORT);
+}
+
+void connectToMQTT() {
+  while (!mqttClient.connected()) {
+    Serial.print("MQTT'ye bağlanılıyor...");
+    String mqttClientId= "ESPClient";
+    mqttClientId += String(random(0xffff), HEX);
+    if (mqttClient.connect("ESP32Client", MQTT_USER, MQTT_PASS)) {
+      Serial.println("Bağlandı!");
+      //mqttClient.subscribe (MQTT_TOPIC);
+    } else {
+      Serial.print("Bağlantı başarısız, hata kodu: ");
+      Serial.print(mqttClient.state());
+      Serial.println(" 5 saniye sonra tekrar deneniyor...");
+      delay(5000);
+    }
+  }
+}
+
+//void publishMessage () //???????????????
+
 // gsr example kodundan da buraya gsr değerini return eden fonksiyon eklenecek 
-double GSR(){
-  return(1000);
- }
+//double GSR(){
+  //return(1000);
+ //}
 
 //HR fonksiyonu burada sadece ortalama nabzı hesaplayıyor
 double HR(){
@@ -94,12 +128,22 @@ void loop() {
 
   StaticJsonDocument<200> data;
   data["HR"] = HR();
-  data["GSR"] = GSR();
+  //data["GSR"] = GSR();
 
   String jsonString;
   serializeJson(data, jsonString);
 
   checkWiFiConnection();
+  if (!mqttClient.connected()) {
+    connectToMQTT();       // MQTT bağlantısını kontrol et
+  }
+  mqttClient.loop();           // MQTT istemcisi döngüsü
   unsigned long currentMillis = millis();
+  if (currentMillis - previousMillis >= interval) {
+    previousMillis = currentMillis;
+    Serial.print("MQTT Mesajı Gönderiliyor: ");
+    Serial.println(jsonString);
+    mqttClient.publish(MQTT_TOPIC, jsonString.c_str()); // JSON'u MQTT'ye gönder.
 
 }//json halledilmiş
+}
