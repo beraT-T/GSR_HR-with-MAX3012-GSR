@@ -50,6 +50,7 @@ void setup() {
   particleSensor.setup(ledBrightness, sampleAverage, ledMode, sampleRate, pulseWidth, adcRange);
 
   WiFi.mode(WIFI_STA);
+  setupMQTT(); // MQTT sunucu ayarlarını başlat
 }
 
 void setupMQTT(){
@@ -73,8 +74,21 @@ void connectToMQTT() {
   }
 }
 
-//void publishMessage () //???????????????
+void publishMessage () 
+{
+if (!mqttClient.connected()) {
+  connectToMQTT();       // MQTT bağlantısını kontrol et
+}
+mqttClient.loop();           // MQTT istemcisi döngüsü
 
+if (currentMillis - previousMillis >= interval) {
+  previousMillis = currentMillis;
+  Serial.print("MQTT Mesajı Gönderiliyor: ");
+  Serial.println(jsonString);
+  mqttClient.publish(MQTT_TOPIC, jsonString.c_str()); // JSON'u MQTT'ye gönder.
+  
+}
+}
 // gsr example kodundan da buraya gsr değerini return eden fonksiyon eklenecek 
 //double GSR(){
   //return(1000);
@@ -132,18 +146,9 @@ void loop() {
 
   String jsonString;
   serializeJson(data, jsonString);
-
   checkWiFiConnection();
-  if (!mqttClient.connected()) {
-    connectToMQTT();       // MQTT bağlantısını kontrol et
-  }
-  mqttClient.loop();           // MQTT istemcisi döngüsü
+  publishMessage();
   unsigned long currentMillis = millis();
-  if (currentMillis - previousMillis >= interval) {
-    previousMillis = currentMillis;
-    Serial.print("MQTT Mesajı Gönderiliyor: ");
-    Serial.println(jsonString);
-    mqttClient.publish(MQTT_TOPIC, jsonString.c_str()); // JSON'u MQTT'ye gönder.
+  
 
-}//json halledilmiş
 }
