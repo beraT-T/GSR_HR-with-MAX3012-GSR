@@ -11,6 +11,9 @@
 #include <Arduino.h>
 #include <Wire.h> //i2c haberleşmesi için
 #include "MAX30105.h"
+/*
+include board specific libraries
+*/
 #if defined(ESP32)
 // ESP32 specific code here
 #include <WiFi.h>
@@ -27,14 +30,12 @@
 #define MQTT_USER ""
 #define MQTT_PASS ""
 
-
 #define SECRET_SSID "MrHOME"     // replace SSID with your WiFi network name
 #define SECRET_PASS "3b4e162d8b" // replace Password with your WiFi password
 
-
 WiFiClient wificlient;
 PubSubClient mqttClient(wificlient);
-// MAX30105 particleSensor;
+MAX30105 particleSensor;
 
 const byte RATE_SIZE = 4; // Ortalama hesaplamak için kullanılacak örnek sayısı
 byte rates[RATE_SIZE];    // Kalp atış hızlarını saklamak için dizi
@@ -68,14 +69,19 @@ JsonDocument<200> data;
 JsonDocument data;
 String jsonString;
 
+/**
+ * @brief setup WiFi connection and connect to WiFi
+ *
+ */
 void setupWiFi()
 {
-  Serial.print("Connecting to WiFi...");
+  Serial.print("Connecting to WiFi ");
   WiFi.begin(SECRET_SSID, SECRET_PASS);
 
-  int attempts = 0;
+  // boyle kucuk sayaclarin veri turu size_t veya uint8_t olabilir :))
+  size_t attempts = 0;
 
-  while (WiFi.status() != WL_CONNECTED && attempts < 10)
+  while (WiFi.status() != WL_CONNECTED && attempts < 5)
   {
     delay(1000);
     Serial.print(".");
@@ -87,13 +93,26 @@ void setupWiFi()
   */
   if (WiFi.status() == WL_CONNECTED)
   {
-    Serial.println("Connected!");
+    Serial.println(" Connected!");
     Serial.print("IP Adresi: ");
     Serial.println(WiFi.localIP()); // fazla bilgi den zarar gelmez :))
   }
   else
   {
     Serial.println("Failed to connect to WiFi");
+  }
+}
+
+/**
+ * @brief check wifi connection status and reconnect if necessary
+ *
+ */
+void checkWiFiConnection()
+{
+  if (WiFi.status() != WL_CONNECTED)
+  {
+    Serial.print("Wİfi connection lost. Reconnecting...");
+    setupWiFi();
   }
 }
 
@@ -107,12 +126,22 @@ void setMqttClientId(void)
   Serial.print("MQTT Client ID: ");
   Serial.println(mqttClientId);
 }
+
+/**
+ * @brief Setup MQTT parameters
+ *
+ */
 void setupMQTT()
 {
   mqttClient.setServer(MQTT_BROKER, MQTT_PORT);
+  mqttClient.setKeepAlive(60);
   setMqttClientId();
 }
 
+/**
+ * @brief connect to MQTT broker
+ *
+ */
 void connectToMQTT()
 {
 
@@ -127,13 +156,17 @@ void connectToMQTT()
     else
     {
       Serial.print("Bağlantı başarısız, hata kodu: ");
-      Serial.print(mqttClient.state());
+      Serial.println(mqttClient.state());
       Serial.println(" 5 saniye sonra tekrar deneniyor...");
       delay(5000);
     }
   }
 }
 
+/**
+ * @brief check MQTT connection status and reconnect if necessary
+ *
+ */
 void checkMQTTConnection()
 {
   if (!mqttClient.connected())
@@ -142,41 +175,57 @@ void checkMQTTConnection()
   }
 }
 
-void checkWiFiConnection()
+// HR fonksiyonu burada sadece ortalama nabzı hesaplayıyor
+double HR()
 {
-  if (WiFi.status() != WL_CONNECTED)
-  {
-    Serial.print("Wİfi connection lost. Reconnecting...");
-    setupWiFi();
+  long irValue = particleSensor.getIR();
+
+  if (irValue > 50000)
+  { // IR değeri belirli bir eşik değerini aşarsa kalp atışını algıla
+    long delta = millis() - lastBeat;
+    lastBeat = millis();
+
+    beatsPerMinute = 60 / (delta / 1000.0);
+    if (beatsPerMinute < 255 && beatsPerMinute > 20)
+    {
+      rates[rateSpot++] = (byte)beatsPerMinute;
+      rateSpot %= RATE_SIZE;
+    }
+
+    int sum = 0;
+    for (byte i = 0; i < RATE_SIZE; i++)
+    {
+      sum += rates[i];
+    }
+    beatAvg = sum / RATE_SIZE;
   }
+
+  Serial.print("BPM: ");
+  Serial.println(beatAvg);
+  return (beatAvg);
 }
 
-// HR fonksiyonu burada sadece ortalama nabzı hesaplayıyor
-//  double HR(){
-//    long irValue = particleSensor.getIR();
+/**
+ * @brief setup MAX30105 sensor
+ *
+ */
+void setupMax30105()
+{
+  size_t attempts = 0;
+  while (!particleSensor.begin(Wire, I2C_SPEED_FAST) && attempts < 5)
+  {
+    Serial.println("MAX30105 was not found. Please check wiring/power.");
+    delay(1000);
+    attempts++;
+  }
+  Serial.println("MAX30105 found. Setting up...");
+  particleSensor.setup(ledBrightness, sampleAverage, ledMode, sampleRate, pulseWidth, adcRange);
+}
 
-//   if (irValue > 50000) { // IR değeri belirli bir eşik değerini aşarsa kalp atışını algıla
-//     long delta = millis() - lastBeat;
-//     lastBeat = millis();
-
-//     beatsPerMinute = 60 / (delta / 1000.0);
-//     if (beatsPerMinute < 255 && beatsPerMinute > 20) {
-//       rates[rateSpot++] = (byte)beatsPerMinute;
-//       rateSpot %= RATE_SIZE;
-//     }
-
-//     int sum = 0;
-//     for (byte i = 0; i < RATE_SIZE; i++) {
-//       sum += rates[i];
-//     }
-//     beatAvg = sum / RATE_SIZE;
-//   }
-
-//   Serial.print("BPM: ");
-//   Serial.println(beatAvg);
-//   return(beatAvg);
-// }
-
+/**
+ * @brief publish message to MQTT broker if interval is passed
+ *
+ */
 void publishMessage()
 {
 
@@ -204,22 +253,19 @@ void publishMessage()
   }
 }
 
+
+
 void setup()
 {
   Serial.begin(115200);
   Serial.println("Initializing...");
 
-  // if (!particleSensor.begin(Wire, I2C_SPEED_FAST))
-  // {
-  //   Serial.println("MAX30105 was not found. Please check wiring/power.");
-  //   while (1)
-  //     ;
-  // }
-  // particleSensor.setup(ledBrightness, sampleAverage, ledMode, sampleRate, pulseWidth, adcRange);
-
+  setupMax30105();
   setupWiFi();
   setupMQTT();
   connectToMQTT();
+  Serial.println("Initialization completed.");
+  Serial.println("Ready to measure and send data.");
 }
 
 void loop()
