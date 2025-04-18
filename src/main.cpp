@@ -15,11 +15,12 @@
 #include <ArduinoJson.h>
 #include <PubSubClient.h>
 
-#define MQTT_BROKER "broker.hivemq.com"
+#define MQTT_BROKER "mqtt-dashboard.com"
 #define MQTT_PORT 1883
 #define MQTT_TOPIC "esmanur/healthData"
-#define MQTT_USER "hivemq.webclient.1741827367846" 
-#define MQTT_PASS "AS46kt3W0Hqp!RK%b>$a"
+#define MQTT_USER "clientId-l8qDUL4gQb"
+
+
 #define MQTT_QOS 1
 #define MQTT_RETAIN false
 
@@ -82,8 +83,9 @@ void connectToMQTT() {
   while (!mqttClient.connected()) {
     Serial.print("MQTT'ye bağlanılıyor...");
     mqttClientId += String(random(0xffff), HEX);
-    if (mqttClient.connect("ESP32Client", MQTT_USER, MQTT_PASS)) {
+    if (mqttClient.connect( MQTT_USER, NULL, NULL, NULL, 0, false, NULL, true)) {
       Serial.println("Bağlandı!");
+      delay(500);
     } else {
       Serial.print("Bağlantı başarısız, hata kodu: ");
       Serial.print(mqttClient.state());
@@ -143,7 +145,7 @@ if (currentMillis - previousMillis >= interval) {
   Serial.print("Publishing MQTT message; ");
   Serial.println(jsonString);
 
-  if(mqttClient.publish(MQTT_TOPIC, jsonString.c_str(), jsonString.length(), MQTT_QOS, MQTT_RETAIN)){
+  if(mqttClient.publish(MQTT_TOPIC, jsonString.c_str(), jsonString.length())){
     Serial.print("Message published successfully.");
   } 
   else{
