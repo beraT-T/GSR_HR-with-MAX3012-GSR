@@ -15,11 +15,11 @@
 #include <ArduinoJson.h>
 #include <PubSubClient.h>
 
-#define MQTT_BROKER "broker.hivemq.com"
+#define MQTT_BROKER "http://opkg.pievision.com"
 #define MQTT_PORT 1883
 #define MQTT_TOPIC "esmanur/healthData"
-#define MQTT_USER "hivemq.webclient.1741827367846" 
-#define MQTT_PASS "AS46kt3W0Hqp!RK%b>$a"
+#define MQTT_USER "isu-ilab-esma" 
+#define MQTT_PASS 
 #define MQTT_QOS 1
 #define MQTT_RETAIN false
 
