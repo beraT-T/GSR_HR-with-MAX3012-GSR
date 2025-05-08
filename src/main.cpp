@@ -2,6 +2,16 @@
 #include "MAX30105.h"
 #include "heartRate.h"
 
+<<<<<<< HEAD
+=======
+#define MQTT_BROKER "http://opkg.pievision.com"
+#define MQTT_PORT 1883
+#define MQTT_TOPIC "esmanur/healthData"
+#define MQTT_USER "isu-ilab-esma" 
+#define MQTT_PASS 
+#define MQTT_QOS 1
+#define MQTT_RETAIN false
+>>>>>>> 125c9eec743acfe7cd3448a9975edfd0ef88fe2a
 
 
 MAX30105 particleSensor;
