@@ -2,12 +2,25 @@
 #include "MAX30105.h" // MAX30105 kütüphanesi
 #include "heartRate.h"  // Nabız hesaplama algoritması için
 #include <WiFi.h>
+#include <PubSubClient.h>
+#include <ArduinoJson.h>
+
+
 MAX30105 particleSensor;
 //wifi bilgiler
 #define SECRET_SSID "Galaxy M3121E1"
 #define  SECRET_PASS "ildv3767"
 char ssid[]= SECRET_SSID;
 char pass[]= SECRET_PASS;
+
+const char* clientid "isu-ilab-esma"
+const char* mqtt_server "//opkg.pievision.com"
+
+
+WiFiClient espClient;
+PubSubClient client(espClient);
+
+
 // --- Program Durumları ---
 enum ProgramState {
   STATE_INITIAL_DELAY,
@@ -65,7 +78,7 @@ void setupWiFi(){
     Serial.println("Failed to connect to WiFi");
   }
   else{
-    Serial.println("FConnected");
+    Serial.println("Connected");
   }
 }
 void checkWiFiConnection() {
