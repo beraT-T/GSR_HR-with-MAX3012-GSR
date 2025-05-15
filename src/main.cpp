@@ -13,8 +13,8 @@ MAX30105 particleSensor;
 char ssid[]= SECRET_SSID;
 char pass[]= SECRET_PASS;
 
-const char* clientid "isu-ilab-esma"
-const char* mqtt_server "//opkg.pievision.com"
+const char* clientid "isu-ilab-esma";
+const char* mqtt_server "//opkg.pievision.com";
 
 
 WiFiClient espClient;
@@ -63,6 +63,10 @@ const long gsrReadInterval = 500;    // GSR okuma aralığı (milisaniye), ~3 Hz
 unsigned long lastPpgPrintMillis = 0;   // Son ana veri yazdırma zamanı
 const long ppgPrintInterval = 10;       // Ana veri yazdırma aralığı (milisaniye), 100 Hz hedefi
 
+StaticJsonDocument<200> data;
+String jsonString;
+
+
 void setupWiFi(){
     Serial.print("Connecting to WiFi...");
      WiFi.begin(SECRET_SSID, SECRET_PASS);
@@ -88,6 +92,25 @@ void checkWiFiConnection() {
   }
 }
 
+void callback(char* topic, byte* payload, unsigned int length) {
+    Serial.print("Message arrived [");
+    Serial.print(topic);
+    Serial.print("] ");
+    for (int i=0;i<length;i++) {
+      Serial.print((char)payload[i]);
+    }
+    Serial.println();
+  }
+
+
+void setupMQTT(){
+    mqttClient.setServer(mqtt_server,1883);
+    mqttClient.setCallback(callback);
+}
+
+void connectToMQTT(){
+    String mqttCientd= ""
+}
 void setup() {
     Serial.begin(115200);
     Serial.println("Initializing MAX3010X sensor...");
