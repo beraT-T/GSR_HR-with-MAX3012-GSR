@@ -8,13 +8,17 @@
 
 MAX30105 particleSensor;
 //wifi bilgiler
-#define SECRET_SSID "Galaxy M3121E1"
-#define  SECRET_PASS "ildv3767"
+#define SECRET_SSID "TurkTelekom_TP7CB8_2.4GHz"
+#define  SECRET_PASS "4CM79L9F7Nv9" 
 char ssid[]= SECRET_SSID;
 char pass[]= SECRET_PASS;
 
-const char* clientid "isu-ilab-esma";
-const char* mqtt_server "//opkg.pievision.com";
+
+const char* clientid= "esma-ESP32" ;
+const char* mqtt_server= "mqtt-dashboard.com";
+const int mqtt_port= 1883;
+ // MQTT konusunu tanımla
+ const char* topic ="isu_ilab/esma/sensor_data"; // Kendi topic'inizi belirleyin
 
 
 WiFiClient espClient;
@@ -51,13 +55,13 @@ long lastBeatTime = 0;          // Son nabız algılandığı zaman (milisaniye 
 float currentBPM_float;         // İki vuruş arası hesaplanan anlık BPM (float)
 int averageBPM = 0;             // Son RATE_SIZE vuruşun ortalama BPM'i
 
-// --- GSR (Galvanik Deri Tepkisi) Değişkenleri ---
-const int GSR_PIN = 34;       // GSR sensörünün bağlı olduğu analog pin (ESP32 için)
-int gsrRawSum = 0;            // 10 GSR okumasının toplamı
-int gsrAverageRaw = 0;        // Ortalama ham GSR değeri (10 okumadan)
-int gsrValueToPrint = 0;      // Seri porta yazdırılacak son hesaplanan ve ölçeklenmiş GSR değeri
-unsigned long lastGsrReadMillis = 0; // Son GSR okuma zamanı
-const long gsrReadInterval = 500;    // GSR okuma aralığı (milisaniye), ~3 Hz için
+// // --- GSR (Galvanik Deri Tepkisi) Değişkenleri ---
+// const int GSR_PIN = 34;       // GSR sensörünün bağlı olduğu analog pin (ESP32 için)
+// int gsrRawSum = 0;            // 10 GSR okumasının toplamı
+// int gsrAverageRaw = 0;        // Ortalama ham GSR değeri (10 okumadan)
+// int gsrValueToPrint = 0;      // Seri porta yazdırılacak son hesaplanan ve ölçeklenmiş GSR değeri
+// unsigned long lastGsrReadMillis = 0; // Son GSR okuma zamanı
+// const long gsrReadInterval = 500;    // GSR okuma aralığı (milisaniye), ~3 Hz için
 
 // --- Seri Port Yazdırma Zamanlaması (Ana Veri Akışı) ---
 unsigned long lastPpgPrintMillis = 0;   // Son ana veri yazdırma zamanı
@@ -104,13 +108,33 @@ void callback(char* topic, byte* payload, unsigned int length) {
 
 
 void setupMQTT(){
-    mqttClient.setServer(mqtt_server,1883);
-    mqttClient.setCallback(callback);
+    client.setServer(mqtt_server,mqtt_port);
+    client.setCallback(callback);
+    Serial.println("MQTT setup complete.");
 }
 
 void connectToMQTT(){
-    String mqttCientd= ""
+    while (!client.connected() && WiFi.status() == WL_CONNECTED) {
+        Serial.print("Attempting MQTT connection...");
+        // Client ID ile bağlanmayı dene
+        // İsteğe bağlı: Kullanıcı adı ve şifre varsa: client.connect(clientid, mqtt_username, mqtt_password)
+        if (client.connect(clientid)) {
+            Serial.println("connected to MQTT broker");
+            // Bağlantı kurulunca, dinlemek istediğiniz konulara burada abone olabilirsiniz.
+            // Örneğin: client.subscribe("cihazim/komut");
+            // Bu projede şimdilik sadece yayın yapacağımız için subscribe kısmını boş bırakabiliriz.
+            // Ama bir komut almak isterseniz burası doğru yer.
+        } else {
+            Serial.print("failed, rc=");
+            Serial.print(client.state()); // Bağlantı hatası durumunu yazdır
+            Serial.println(" try again in 5 seconds");
+            // 5 saniye bekle ve tekrar dene
+            delay(5000);
+        }
+    }
 }
+
+
 void setup() {
     Serial.begin(115200);
     Serial.println("Initializing MAX3010X sensor...");
@@ -123,6 +147,14 @@ void setup() {
     Serial.println("Setup complete. Program will start after initial delay.");
     Serial.println("Place your index finger on the sensor with steady pressure.");
      setupWiFi();
+
+     if (WiFi.status() == WL_CONNECTED) { // Sadece WiFi bağlıysa MQTT'yi kur ve bağlanmayı dene
+        setupMQTT();    // MQTT ayarlarını yap
+        connectToMQTT(); // İlk bağlantı denemesini yap (opsiyonel, loop içinde zaten yapılacak)
+                          // Ancak ilk açılışta hızlı bir deneme iyi olabilir.
+    } else {
+        Serial.println("WiFi connection failed, MQTT setup skipped.");
+    }
 
     byte irLedBrightness = 0x32; 
     byte sampleAverage = 1;      
@@ -140,9 +172,53 @@ void setup() {
     programStartTime = millis(); // Programın başlama zamanını kaydet
 }
 
+// Bu fonksiyonu loop() fonksiyonundan önce veya global alanda tanımlayın
+void publishSensorData(long ir, int bpm){ //int gsr) {
+    // StaticJsonDocument<200> data; // Zaten globalde tanımlı, burada tekrar tanımlamaya gerek yok.
+    data.clear(); // Her yeni mesaj için JSON belgesini temizle
+
+    // JSON belgesine verileri ekle
+    data["ir_value"] = ir;
+    data["bpm"] = bpm;
+    //data["gsr_value"] = gsr;
+    data["timestamp"] = millis(); // İsteğe bağlı: Verinin zaman damgası
+
+    // JSON belgesini bir String'e dönüştür
+    // String jsonString; // Zaten globalde tanımlı
+    serializeJson(data, jsonString);
+
+   
+
+    // JSON String'ini MQTT üzerinden yayınla
+    if (client.publish(topic, jsonString.c_str())) { // .c_str() ile char* formatına çevir
+        Serial.print("Published to ");
+        Serial.print(topic);
+        Serial.print(": ");
+        Serial.println(jsonString);
+    } else {
+        Serial.println("Failed to publish message.");
+    }
+    jsonString = ""; // Bir sonraki kullanım için stringi temizle (opsiyonel, serializeJson üzerine yazar)
+}
+
+
+
+
+
+
 void loop() {
     unsigned long currentMillis = millis(); 
      checkWiFiConnection();
+
+      // --- MQTT BAĞLANTI YÖNETİMİ ---
+    if (WiFi.status() == WL_CONNECTED) { // Sadece WiFi bağlıysa MQTT işlemlerini yap
+        if (!client.connected()) {     // Eğer MQTT bağlantısı kopmuşsa
+            connectToMQTT();           // Yeniden bağlanmayı dene (bu fonksiyon zaten içinde deneme döngüsü barındırıyor)
+        }
+        client.loop(); // MQTT kütüphanesinin çalışması için BU ÇOK ÖNEMLİ!
+                       // Gelen mesajları işler, keep-alive gönderir vs.
+    }
+    // --- MQTT BAĞLANTI YÖNETİMİ SONU ---
 
     switch (currentState) {
         case STATE_INITIAL_DELAY:
@@ -192,15 +268,15 @@ void loop() {
                     lastBeatTime = currentMillis; 
                 }
 
-                if (currentMillis - lastGsrReadMillis >= gsrReadInterval) {
-                    lastGsrReadMillis = currentMillis; 
-                    gsrRawSum = 0;
-                    for (int i = 0; i < 10; i++) { 
-                        gsrRawSum += analogRead(GSR_PIN);
-                    }
-                    gsrAverageRaw = gsrRawSum / 10;
-                    gsrValueToPrint = map(gsrAverageRaw, 0, 4095, 0, 1023); 
-                }
+                // if (currentMillis - lastGsrReadMillis >= gsrReadInterval) {
+                //     lastGsrReadMillis = currentMillis; 
+                //     gsrRawSum = 0;
+                //     for (int i = 0; i < 10; i++) { 
+                //         gsrRawSum += analogRead(GSR_PIN);
+                //     }
+                //     gsrAverageRaw = gsrRawSum / 10;
+                //     gsrValueToPrint = map(gsrAverageRaw, 0, 4095, 0, 1023); 
+                // }
 
                 if (currentMillis - lastPpgPrintMillis >= ppgPrintInterval) {
                     lastPpgPrintMillis = currentMillis; 
@@ -208,7 +284,12 @@ void loop() {
                     Serial.print(",");
                     Serial.print(averageBPM); 
                     Serial.print(",");
-                    Serial.println(gsrValueToPrint); 
+                   // Serial.println(gsrValueToPrint); 
+                   if (client.connected()) {
+                    publishSensorData(irValue, averageBPM); // MQTT'ye gönder
+                } else {
+                    Serial.println("MQTT not connected to HiveMQ, data not published."); // BU MESAJI GÖRMELİSİN EĞER BAĞLI DEĞİLSE
+                }
                 }
                 // --- Sensör Okuma ve İşleme Bloğu Sonu ---
             } else {
