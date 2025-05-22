@@ -5,10 +5,9 @@ import json
 import datetime
 import time
 import os
-import random # Client ID için eklendi
 
 # --- Yapılandırma Ayarları ---
-MQTT_BROKER_HOST = "mqtt-dashboard.com"
+MQTT_BROKER_HOST = "mqtt-dashboard.com" # veya broker.hivemq.com
 MQTT_BROKER_PORT = 1883
 MQTT_TOPIC = "isu_ilab/esma/sensor_data"
 
@@ -18,10 +17,18 @@ MYSQL_PASSWORD = "Neupass8."
 MYSQL_DATABASE = "sensor_db_esma"
 MYSQL_TABLE_NAME = "measurements_esma"
 
+# Global MySQL bağlantısı ve cursor (performans için)
+# Her mesajda bağlanıp kapatmak yerine, bağlantıyı açık tutmayı deneyebiliriz.
+# Ancak, uzun süreli bağlantılarda "MySQL server has gone away" hatası alınabilir.
+# Şimdilik orijinal yapı korunuyor, ancak bu bir iyileştirme alanı olabilir.
+# mysql_cnx = None
+# mysql_cursor = None
+
 # --- MySQL Veritabanı Kurulum Fonksiyonu ---
 def setup_mysql_database():
     """MySQL veritabanını ve tabloyu (eğer yoksa) oluşturur."""
     cnx = None
+    cursor = None # cursor'ı burada tanımla
     try:
         cnx = mysql.connector.connect(
             host=MYSQL_HOST,
@@ -34,13 +41,14 @@ def setup_mysql_database():
             print(f"Veritabanı '{MYSQL_DATABASE}' oluşturuldu veya zaten mevcut.")
         except mysql.connector.Error as err:
             print(f"Veritabanı oluşturulamadı: {err}")
+            # Kritik hata ise çıkış yapılabilir
+            # exit(1)
 
         cnx.database = MYSQL_DATABASE
 
         table_description = (
             f"CREATE TABLE IF NOT EXISTS `{MYSQL_TABLE_NAME}` ("
             "  `id` INT AUTO_INCREMENT PRIMARY KEY,"
-            "  `user_name` VARCHAR(100) NOT NULL," # Backtick kullanımı
             "  `record_time` DATETIME(3) NOT NULL,"
             "  `ir_value` INT,"
             "  `bpm` INT,"
@@ -60,36 +68,62 @@ def setup_mysql_database():
         else:
             print(f"MySQL hatası (setup_mysql_database): {err}")
     finally:
-        if cnx and cnx.is_connected():
+        if cursor: # cursor'ın varlığını kontrol et
             cursor.close()
+        if cnx and cnx.is_connected():
             cnx.close()
 
-# --- MQTT Bağlantı Geri Çağırma Fonksiyonları ---
-def on_connect(client, userdata, flags, reason_code, properties=None):
-    if reason_code == 0:
+# --- MQTT Bağlantı Geri Çağırma Fonksiyonları (VERSION1 için güncellendi) ---
+def on_connect(client, userdata, flags, rc): # reason_code -> rc, properties kaldırıldı
+    """MQTT Broker'a bağlantı kurulduğunda çağrılır."""
+    print(f"DEBUG: on_connect çağrıldı, rc (bağlantı kodu): {rc}")
+    if rc == 0: # mqtt.MQTT_ERR_SUCCESS = 0
         print(f"MQTT Broker'a başarıyla bağlanıldı: {MQTT_BROKER_HOST}")
-        client.subscribe(MQTT_TOPIC)
-        print(f"'{MQTT_TOPIC}' konusuna abone olundu.")
+        # Konuya abone ol ve sonucu kontrol et
+        (result, mid) = client.subscribe(MQTT_TOPIC)
+        if result == mqtt.MQTT_ERR_SUCCESS:
+            print(f"'{MQTT_TOPIC}' konusuna abone olma isteği gönderildi (MID: {mid}). "
+                  "Broker onayını bekliyor (on_subscribe).")
+        else:
+            print(f"'{MQTT_TOPIC}' konusuna abone olma HATASI! Sonuç kodu: {result}")
     else:
-        print(f"MQTT Broker'a bağlanılamadı! Bağlantı kodu: {reason_code}")
+        print(f"MQTT Broker'a bağlanılamadı! Bağlantı kodu: {rc}. "
+              f"Detaylar için Paho MQTT hata kodlarına bakın.")
+
+def on_subscribe(client, userdata, mid, granted_qos):
+    """Broker bir subscribe isteğini onayladığında çağrılır."""
+    print(f"DEBUG: on_subscribe çağrıldı. MID: {mid}, Verilen QoS: {granted_qos}")
+    if isinstance(granted_qos, list): # Birden fazla abonelik için
+        for qos in granted_qos:
+            if qos == 128: # MQTT_ERR_SUBACK_FAILURE gibi bir değer (0, 1, 2 olmalı normalde)
+                print(f"  -> '{MQTT_TOPIC}' için abonelik BAŞARISIZ (Broker reddetti). QoS: {qos}")
+                return
+        print(f"  -> '{MQTT_TOPIC}' için abonelik broker tarafından başarıyla ONAYLANDI.")
+    else: # Tek abonelik
+        if granted_qos == 128:
+             print(f"  -> '{MQTT_TOPIC}' için abonelik BAŞARISIZ (Broker reddetti). QoS: {granted_qos}")
+        else:
+            print(f"  -> '{MQTT_TOPIC}' için abonelik broker tarafından başarıyla ONAYLANDI. QoS: {granted_qos}")
+
 
 def on_message(client, userdata, msg):
     """Abone olunan bir konuya yeni bir mesaj geldiğinde çağrılır."""
-    print(f"Mesaj alındı -> Konu: {msg.topic}, Veri: {msg.payload.decode()}")
+    # Bu satır, fonksiyonun çağrılıp çağrılmadığını görmek için en önemli kısımdır.
+    print(f"--- DEBUG: ON_MESSAGE ÇAĞRILDI! Konu: {msg.topic} ---")
+    
+    print(f"Ham mesaj alındı -> Konu: {msg.topic}, Veri: {msg.payload}") # Ham payload'ı görmek için
+    
     cnx = None
+    cursor = None
     try:
-        payload_str = msg.payload.decode()
+        payload_str = msg.payload.decode('utf-8') # UTF-8 ile decode etmeyi dene
+        print(f"Decode edilmiş mesaj: {payload_str}")
         data = json.loads(payload_str)
 
         ir_val = data.get("ir_value")
         bpm_val = data.get("bpm")
-        gsr_val = data.get("gsr_value")
+        gsr_val = data.get("gsr_value") # C++ kodunda bu sabit 8000 idi
         device_ms = data.get("timestamp")
-        current_user_name = data.get("user_name")
-
-        if current_user_name is None:
-            print("Uyarı: MQTT mesajında 'user_name' bulunamadı. Kayıt için varsayılan 'bilinmeyen_kullanici' atanıyor.")
-            current_user_name = "bilinmeyen_kullanici"
 
         record_timestamp_obj = datetime.datetime.now()
 
@@ -103,43 +137,63 @@ def on_message(client, userdata, msg):
 
         insert_query = (
             f"INSERT INTO {MYSQL_TABLE_NAME} "
-            "(user_name, record_time, ir_value, bpm, gsr_value, device_millis) "
-            "VALUES (%s, %s, %s, %s, %s, %s)"
+            "(record_time, ir_value, bpm, gsr_value, device_millis) "
+            "VALUES (%s, %s, %s, %s, %s)"
         )
-        data_to_insert = (current_user_name, record_timestamp_obj, ir_val, bpm_val, gsr_val, device_ms)
+        data_to_insert = (record_timestamp_obj, ir_val, bpm_val, gsr_val, device_ms)
 
         cursor.execute(insert_query, data_to_insert)
         cnx.commit()
-        # print ifadesindeki Kullanıcı adı ve diğer değerler arasındaki virgül düzeltildi
-        print(f"MySQL'e kaydedildi: Kullanıcı={current_user_name}, Zaman={record_timestamp_obj.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]}, "
+        print(f"MySQL'e kaydedildi: Zaman={record_timestamp_obj.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]}, "
               f"IR={ir_val}, BPM={bpm_val}, GSR={gsr_val}, DeviceMs={device_ms}")
 
+    except UnicodeDecodeError:
+        print(f"Hata: Mesaj UTF-8 formatında değil: {msg.payload}")
     except json.JSONDecodeError:
-        print(f"Hata: Gelen mesaj JSON formatında değil veya bozuk: {msg.payload.decode()}")
+        print(f"Hata: Gelen mesaj JSON formatında değil veya bozuk: {payload_str if 'payload_str' in locals() else msg.payload.decode(errors='ignore')}")
     except mysql.connector.Error as err:
         print(f"MySQL hatası (on_message): {err}")
+        if cnx and cnx.is_connected(): # Hata durumunda rollback yapmayı düşünebilirsiniz
+             cnx.rollback()
     except Exception as e:
         print(f"Beklenmedik bir hata oluştu (on_message): {e}")
     finally:
-        if cnx and cnx.is_connected():
+        if cursor:
             cursor.close()
+        if cnx and cnx.is_connected():
             cnx.close()
 
-def on_disconnect(client, userdata, reason_code, properties=None):
-    print(f"MQTT Broker ile bağlantı kesildi. Sebep kodu: {reason_code}")
-    if reason_code != 0:
-        print("Yeniden bağlanmaya çalışılıyor...")
+def on_disconnect(client, userdata, rc): # reason_code -> rc, properties kaldırıldı
+    """MQTT Broker ile bağlantı kesildiğinde çağrılır."""
+    print(f"DEBUG: on_disconnect çağrıldı, rc: {rc}")
+    if rc != 0:
+        print(f"MQTT Broker ile bağlantı beklenmedik şekilde kesildi. Sebep kodu: {rc}. Yeniden bağlanmaya çalışılmayacak (otomatik değil).")
+    else:
+        print("MQTT Broker ile bağlantı normal şekilde kesildi.")
+
 
 # --- Ana Program ---
 if __name__ == "__main__":
     setup_mysql_database()
 
-    client_id = f"python-mysql-logger-esma-{random.randint(0,100000)}"
-    client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION1, client_id=client_id)
+    client_id = f"python-mysql-logger-esma-{os.getpid()}"
+    
+    # MQTT istemcisini CallbackAPIVersion.VERSION1 ile doğru şekilde başlat
+    try:
+        # ÖNEMLİ DÜZELTME: Client constructor kullanımı
+        client = mqtt.Client(client_id=client_id, callback_api_version=mqtt.CallbackAPIVersion.VERSION1)
+        print(f"MQTT Client '{client_id}' CallbackAPIVersion.VERSION1 ile oluşturuldu.")
+    except TypeError as e:
+        print(f"HATA: mqtt.Client oluşturulurken TypeError: {e}")
+        print("paho-mqtt kütüphane sürümünüzü kontrol edin. Bu parametreler daha yeni sürümlerde destekleniyor olabilir.")
+        print("Eğer eski bir sürüm kullanıyorsanız, client = mqtt.Client(client_id) şeklinde deneyin (bu durumda callback'ler V1 imzalarına uymalıdır).")
+        exit(1)
+
 
     client.on_connect = on_connect
     client.on_message = on_message
     client.on_disconnect = on_disconnect
+    client.on_subscribe = on_subscribe # Yeni callback'i ata
 
     try:
         print(f"MQTT Broker'a bağlanılıyor: {MQTT_BROKER_HOST}:{MQTT_BROKER_PORT}...")
@@ -152,24 +206,20 @@ if __name__ == "__main__":
         print(f"MQTT bağlantısı sırasında bir hata oluştu: {e}")
         exit(1)
 
-    # client.loop_start() # loop_forever kullanıldığı için yorum satırı
-
+    client.loop_start()
     print("MQTT dinleyicisi başlatıldı. Veri bekleniyor...")
     print("Programı sonlandırmak için Ctrl+C tuşlarına basın.")
 
     try:
-        client.loop_forever() # Ana iş parçacığını bloke eder ve callback'leri dinler
+        while True:
+            time.sleep(1)
     except KeyboardInterrupt:
-        print("Program sonlandırılıyor...")
-    except Exception as e:
-        print(f"loop_forever sırasında bir hata oluştu: {e}")
+        print("\nProgram sonlandırılıyor...")
     finally:
-        # DÜZELTİLMİŞ GİRİNTİLEME
-        print("MQTT bağlantısı kesiliyor...")
-        # Paho MQTT v2.x için is_connected() kontrolü
-        # hasattr(object, name) ile metodun varlığını kontrol etmek daha güvenli
-        if hasattr(client, 'is_connected') and client.is_connected():
-            client.disconnect()
-        elif not hasattr(client, 'is_connected'): # Eski sürümler için basit bir disconnect
-             client.disconnect()
+        print("MQTT döngüsü durduruluyor...")
+        client.loop_stop()
+        # loop_stop çağrıldıktan sonra disconnect genellikle gereksizdir,
+        # ancak bağlantının kapandığından emin olmak için çağrılabilir.
+        # client.disconnect() # Gerekirse
         print("MQTT bağlantısı kesildi ve program sonlandırıldı.")
+
