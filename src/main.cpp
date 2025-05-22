@@ -8,13 +8,13 @@
 
 MAX30105 particleSensor;
 //wifi bilgiler
-#define SECRET_SSID "TurkTelekom_TP7CB8_2.4GHz"
-#define  SECRET_PASS "4CM79L9F7Nv9" 
+#define SECRET_SSID "SUPERONLINE_WiFi_2704"
+#define  SECRET_PASS "HATWK4CHPVAW" 
 char ssid[]= SECRET_SSID;
 char pass[]= SECRET_PASS;
 
 
-const char* clientid= "esma-ESP32" ;
+const char* clientid= "isu-ilab-esma-ESP32" ;
 const char* mqtt_server= "mqtt-dashboard.com";
 const int mqtt_port= 1883;
  // MQTT konusunu tanımla
@@ -23,6 +23,11 @@ const int mqtt_port= 1883;
 
 WiFiClient espClient;
 PubSubClient client(espClient);
+
+
+String mac_adress; 
+char* user_name = "ilab-Esma";
+
 
 
 // --- Program Durumları ---
@@ -37,7 +42,7 @@ ProgramState currentState = STATE_INITIAL_DELAY;
 unsigned long programStartTime = 0;
 unsigned long loggingStartTime = 0;
 const unsigned long initialDelayDuration = 5000;    // 5 saniye
-const unsigned long loggingDuration = 120000;      // 1 dakika (60 saniye)
+const unsigned long loggingDuration = 6000;      // değil1 dakika (60 saniye)
 
 
 // --- Peak Zaman ve Değerlerini Tutma ---
@@ -114,6 +119,7 @@ void setupMQTT(){
 }
 
 void connectToMQTT(){
+
     while (!client.connected() && WiFi.status() == WL_CONNECTED) {
         Serial.print("Attempting MQTT connection...");
         // Client ID ile bağlanmayı dene
@@ -134,10 +140,22 @@ void connectToMQTT(){
     }
 }
 
+void get_mac_adress(){
+
+     Serial.print("ESP32 MAC Adress: ");
+     mac_adress= WiFi.macAddress();
+     Serial.println(mac_adress);
+}
+
+// void get_user_name(){
+
+// }
 
 void setup() {
     Serial.begin(115200);
     Serial.println("Initializing MAX3010X sensor...");
+    get_mac_adress();
+
     Wire.begin(25, 26); // I2C pinlerini GPIO25 (SDA) ve GPIO26 (SCL) olarak ayarla
 
     if (!particleSensor.begin(Wire, I2C_SPEED_FAST)) {
@@ -173,15 +191,17 @@ void setup() {
 }
 
 // Bu fonksiyonu loop() fonksiyonundan önce veya global alanda tanımlayın
-void publishSensorData(long ir, int bpm){ //int gsr) {
+void publishSensorData(long ir, int bpm, int gsr, char* user_name_param){ //int gsr) {
     // StaticJsonDocument<200> data; // Zaten globalde tanımlı, burada tekrar tanımlamaya gerek yok.
     data.clear(); // Her yeni mesaj için JSON belgesini temizle
 
     // JSON belgesine verileri ekle
     data["ir_value"] = ir;
     data["bpm"] = bpm;
-    //data["gsr_value"] = gsr;
+    data["gsr_value"] = gsr;
     data["timestamp"] = millis(); // İsteğe bağlı: Verinin zaman damgası
+    data["user_name"]= user_name_param;
+
 
     // JSON belgesini bir String'e dönüştür
     // String jsonString; // Zaten globalde tanımlı
@@ -191,10 +211,9 @@ void publishSensorData(long ir, int bpm){ //int gsr) {
 
     // JSON String'ini MQTT üzerinden yayınla
     if (client.publish(topic, jsonString.c_str())) { // .c_str() ile char* formatına çevir
-        Serial.print("Published to ");
-        Serial.print(topic);
-        Serial.print(": ");
+        
         Serial.println(jsonString);
+
     } else {
         Serial.println("Failed to publish message.");
     }
@@ -268,6 +287,8 @@ void loop() {
                     lastBeatTime = currentMillis; 
                 }
 
+                int gsrValue= 8000;
+
                 // if (currentMillis - lastGsrReadMillis >= gsrReadInterval) {
                 //     lastGsrReadMillis = currentMillis; 
                 //     gsrRawSum = 0;
@@ -277,6 +298,7 @@ void loop() {
                 //     gsrAverageRaw = gsrRawSum / 10;
                 //     gsrValueToPrint = map(gsrAverageRaw, 0, 4095, 0, 1023); 
                 // }
+                
 
                 if (currentMillis - lastPpgPrintMillis >= ppgPrintInterval) {
                     lastPpgPrintMillis = currentMillis; 
@@ -284,9 +306,9 @@ void loop() {
                     Serial.print(",");
                     Serial.print(averageBPM); 
                     Serial.print(",");
-                   // Serial.println(gsrValueToPrint); 
+                    Serial.println(gsrValue); 
                    if (client.connected()) {
-                    publishSensorData(irValue, averageBPM); // MQTT'ye gönder
+                    publishSensorData(irValue, averageBPM, gsrValue, user_name); // MQTT'ye gönder
                 } else {
                     Serial.println("MQTT not connected to HiveMQ, data not published."); // BU MESAJI GÖRMELİSİN EĞER BAĞLI DEĞİLSE
                 }
@@ -328,4 +350,6 @@ void loop() {
             delay(1000); // Boşta bekleme
             break;
     }
+
+    
 }

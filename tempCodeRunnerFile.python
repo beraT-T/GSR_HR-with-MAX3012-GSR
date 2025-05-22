@@ -1,0 +1,175 @@
+import paho.mqtt.client as mqtt
+import mysql.connector
+from mysql.connector import errorcode
+import json
+import datetime
+import time
+import os
+import random # Client ID için eklendi
+
+# --- Yapılandırma Ayarları ---
+MQTT_BROKER_HOST = "mqtt-dashboard.com"
+MQTT_BROKER_PORT = 1883
+MQTT_TOPIC = "isu_ilab/esma/sensor_data"
+
+MYSQL_HOST = "localhost"
+MYSQL_USER = "root"
+MYSQL_PASSWORD = "Neupass8."
+MYSQL_DATABASE = "sensor_db_esma"
+MYSQL_TABLE_NAME = "measurements_esma"
+
+# --- MySQL Veritabanı Kurulum Fonksiyonu ---
+def setup_mysql_database():
+    """MySQL veritabanını ve tabloyu (eğer yoksa) oluşturur."""
+    cnx = None
+    try:
+        cnx = mysql.connector.connect(
+            host=MYSQL_HOST,
+            user=MYSQL_USER,
+            password=MYSQL_PASSWORD
+        )
+        cursor = cnx.cursor()
+        try:
+            cursor.execute(f"CREATE DATABASE IF NOT EXISTS {MYSQL_DATABASE} DEFAULT CHARACTER SET 'utf8mb4'")
+            print(f"Veritabanı '{MYSQL_DATABASE}' oluşturuldu veya zaten mevcut.")
+        except mysql.connector.Error as err:
+            print(f"Veritabanı oluşturulamadı: {err}")
+
+        cnx.database = MYSQL_DATABASE
+
+        table_description = (
+            f"CREATE TABLE IF NOT EXISTS `{MYSQL_TABLE_NAME}` ("
+            "  `id` INT AUTO_INCREMENT PRIMARY KEY,"
+            "  `user_name` VARCHAR(100) NOT NULL," # Backtick kullanımı
+            "  `record_time` DATETIME(3) NOT NULL,"
+            "  `ir_value` INT,"
+            "  `bpm` INT,"
+            "  `gsr_value` INT,"
+            "  `device_millis` BIGINT NULL"
+            ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
+        )
+        cursor.execute(table_description)
+        print(f"Tablo '{MYSQL_TABLE_NAME}' başarıyla ayarlandı/kontrol edildi.")
+        cnx.commit()
+
+    except mysql.connector.Error as err:
+        if err.errno == errorcode.ER_ACCESS_DENIED_ERROR:
+            print("MySQL erişim hatası: Kullanıcı adı veya şifre yanlış.")
+        elif err.errno == errorcode.ER_BAD_DB_ERROR:
+            print(f"Veritabanı '{MYSQL_DATABASE}' mevcut değil veya erişilemiyor.")
+        else:
+            print(f"MySQL hatası (setup_mysql_database): {err}")
+    finally:
+        if cnx and cnx.is_connected():
+            cursor.close()
+            cnx.close()
+
+# --- MQTT Bağlantı Geri Çağırma Fonksiyonları ---
+def on_connect(client, userdata, flags, reason_code, properties=None):
+    if reason_code == 0:
+        print(f"MQTT Broker'a başarıyla bağlanıldı: {MQTT_BROKER_HOST}")
+        client.subscribe(MQTT_TOPIC)
+        print(f"'{MQTT_TOPIC}' konusuna abone olundu.")
+    else:
+        print(f"MQTT Broker'a bağlanılamadı! Bağlantı kodu: {reason_code}")
+
+def on_message(client, userdata, msg):
+    """Abone olunan bir konuya yeni bir mesaj geldiğinde çağrılır."""
+    print(f"Mesaj alındı -> Konu: {msg.topic}, Veri: {msg.payload.decode()}")
+    cnx = None
+    try:
+        payload_str = msg.payload.decode()
+        data = json.loads(payload_str)
+
+        ir_val = data.get("ir_value")
+        bpm_val = data.get("bpm")
+        gsr_val = data.get("gsr_value")
+        device_ms = data.get("timestamp")
+        current_user_name = data.get("user_name")
+
+        if current_user_name is None:
+            print("Uyarı: MQTT mesajında 'user_name' bulunamadı. Kayıt için varsayılan 'bilinmeyen_kullanici' atanıyor.")
+            current_user_name = "bilinmeyen_kullanici"
+
+        record_timestamp_obj = datetime.datetime.now()
+
+        cnx = mysql.connector.connect(
+            host=MYSQL_HOST,
+            user=MYSQL_USER,
+            password=MYSQL_PASSWORD,
+            database=MYSQL_DATABASE
+        )
+        cursor = cnx.cursor()
+
+        insert_query = (
+            f"INSERT INTO {MYSQL_TABLE_NAME} "
+            "(user_name, record_time, ir_value, bpm, gsr_value, device_millis) "
+            "VALUES (%s, %s, %s, %s, %s, %s)"
+        )
+        data_to_insert = (current_user_name, record_timestamp_obj, ir_val, bpm_val, gsr_val, device_ms)
+
+        cursor.execute(insert_query, data_to_insert)
+        cnx.commit()
+        # print ifadesindeki Kullanıcı adı ve diğer değerler arasındaki virgül düzeltildi
+        print(f"MySQL'e kaydedildi: Kullanıcı={current_user_name}, Zaman={record_timestamp_obj.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]}, "
+              f"IR={ir_val}, BPM={bpm_val}, GSR={gsr_val}, DeviceMs={device_ms}")
+
+    except json.JSONDecodeError:
+        print(f"Hata: Gelen mesaj JSON formatında değil veya bozuk: {msg.payload.decode()}")
+    except mysql.connector.Error as err:
+        print(f"MySQL hatası (on_message): {err}")
+    except Exception as e:
+        print(f"Beklenmedik bir hata oluştu (on_message): {e}")
+    finally:
+        if cnx and cnx.is_connected():
+            cursor.close()
+            cnx.close()
+
+def on_disconnect(client, userdata, reason_code, properties=None):
+    print(f"MQTT Broker ile bağlantı kesildi. Sebep kodu: {reason_code}")
+    if reason_code != 0:
+        print("Yeniden bağlanmaya çalışılıyor...")
+
+# --- Ana Program ---
+if __name__ == "__main__":
+    setup_mysql_database()
+
+    client_id = f"python-mysql-logger-esma-{random.randint(0,100000)}"
+    client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION1, client_id=client_id)
+
+    client.on_connect = on_connect
+    client.on_message = on_message
+    client.on_disconnect = on_disconnect
+
+    try:
+        print(f"MQTT Broker'a bağlanılıyor: {MQTT_BROKER_HOST}:{MQTT_BROKER_PORT}...")
+        client.connect(MQTT_BROKER_HOST, MQTT_BROKER_PORT, keepalive=60)
+    except ConnectionRefusedError:
+        print(f"HATA: MQTT Broker'a bağlanılamadı ({MQTT_BROKER_HOST}:{MQTT_BROKER_PORT}). "
+              "Broker'ın çalıştığından ve adresin doğru olduğundan emin olun.")
+        exit(1)
+    except Exception as e:
+        print(f"MQTT bağlantısı sırasında bir hata oluştu: {e}")
+        exit(1)
+
+    # client.loop_start() # loop_forever kullanıldığı için yorum satırı
+
+    print("MQTT dinleyicisi başlatıldı. Veri bekleniyor...")
+    print("Programı sonlandırmak için Ctrl+C tuşlarına basın.")
+
+    try:
+        client.loop_forever() # Ana iş parçacığını bloke eder ve callback'leri dinler
+    except KeyboardInterrupt:
+        print("Program sonlandırılıyor...")
+    except Exception as e:
+        print(f"loop_forever sırasında bir hata oluştu: {e}")
+    finally:
+        # DÜZELTİLMİŞ GİRİNTİLEME
+        print("MQTT bağlantısı kesiliyor...")
+        # Paho MQTT v2.x için is_connected() kontrolü
+        # hasattr(object, name) ile metodun varlığını kontrol etmek daha güvenli
+        if hasattr(client, 'is_connected') and client.is_connected():
+            client.disconnect()
+        elif not hasattr(client, 'is_connected'): # Eski sürümler için basit bir disconnect
+             client.disconnect()
+        print("MQTT bağlantısı kesildi ve program sonlandırıldı.")
