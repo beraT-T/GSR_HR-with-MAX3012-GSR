@@ -8,8 +8,8 @@
 
 MAX30105 particleSensor;
 //wifi bilgiler
-#define SECRET_SSID "SUPERONLINE_WiFi_2704"
-#define  SECRET_PASS "HATWK4CHPVAW" 
+#define SECRET_SSID "MEDLAB"
+#define  SECRET_PASS "12345678910" 
 char ssid[]= SECRET_SSID;
 char pass[]= SECRET_PASS;
 
@@ -140,12 +140,13 @@ void connectToMQTT(){
     }
 }
 
-void get_mac_adress(){
+ void get_mac_adress(){
 
-     Serial.print("ESP32 MAC Adress: ");
-     mac_adress= WiFi.macAddress();
-     Serial.println(mac_adress);
-}
+      WiFi.mode(WIFI_STA);
+      Serial.print("ESP32 MAC Adress: ");
+      mac_adress= WiFi.macAddress();
+      Serial.println(mac_adress);
+ }
 
 // void get_user_name(){
 
@@ -191,7 +192,7 @@ void setup() {
 }
 
 // Bu fonksiyonu loop() fonksiyonundan önce veya global alanda tanımlayın
-void publishSensorData(long ir, int bpm, int gsr, char* user_name_param){ //int gsr) {
+void publishSensorData(long ir, int bpm, int gsr){//, char* user_name_param //int gsr) {
     // StaticJsonDocument<200> data; // Zaten globalde tanımlı, burada tekrar tanımlamaya gerek yok.
     data.clear(); // Her yeni mesaj için JSON belgesini temizle
 
@@ -200,7 +201,7 @@ void publishSensorData(long ir, int bpm, int gsr, char* user_name_param){ //int 
     data["bpm"] = bpm;
     data["gsr_value"] = gsr;
     data["timestamp"] = millis(); // İsteğe bağlı: Verinin zaman damgası
-    data["user_name"]= user_name_param;
+    //data["user_name"]= user_name_param;
 
 
     // JSON belgesini bir String'e dönüştür
@@ -308,7 +309,7 @@ void loop() {
                     Serial.print(",");
                     Serial.println(gsrValue); 
                    if (client.connected()) {
-                    publishSensorData(irValue, averageBPM, gsrValue, user_name); // MQTT'ye gönder
+                    publishSensorData(irValue, averageBPM, gsrValue); // MQTT'ye gönder
                 } else {
                     Serial.println("MQTT not connected to HiveMQ, data not published."); // BU MESAJI GÖRMELİSİN EĞER BAĞLI DEĞİLSE
                 }
