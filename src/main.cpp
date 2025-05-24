@@ -8,8 +8,8 @@
 
 MAX30105 particleSensor;
 //wifi bilgiler
-#define SECRET_SSID "MEDLAB"
-#define  SECRET_PASS "12345678910" 
+#define SECRET_SSID "TurkTelekom_TP7CB8_2.4GHz"
+#define  SECRET_PASS "4CM79L9F7Nv9" 
 char ssid[]= SECRET_SSID;
 char pass[]= SECRET_PASS;
 
@@ -26,6 +26,7 @@ PubSubClient client(espClient);
 
 
  String mac_adress; 
+ //const char* mac_payload;
  char* user_name = "ilab-Esma";
 
 
@@ -60,13 +61,13 @@ long lastBeatTime = 0;          // Son nabız algılandığı zaman (milisaniye 
 float currentBPM_float;         // İki vuruş arası hesaplanan anlık BPM (float)
 int averageBPM = 0;             // Son RATE_SIZE vuruşun ortalama BPM'i
 
-// // --- GSR (Galvanik Deri Tepkisi) Değişkenleri ---
-// const int GSR_PIN = 34;       // GSR sensörünün bağlı olduğu analog pin (ESP32 için)
-// int gsrRawSum = 0;            // 10 GSR okumasının toplamı
-// int gsrAverageRaw = 0;        // Ortalama ham GSR değeri (10 okumadan)
-// int gsrValueToPrint = 0;      // Seri porta yazdırılacak son hesaplanan ve ölçeklenmiş GSR değeri
-// unsigned long lastGsrReadMillis = 0; // Son GSR okuma zamanı
-// const long gsrReadInterval = 500;    // GSR okuma aralığı (milisaniye), ~3 Hz için
+// --- GSR (Galvanik Deri Tepkisi) Değişkenleri ---
+const int GSR_PIN = 34;       // GSR sensörünün bağlı olduğu analog pin (ESP32 için)
+int gsrRawSum = 0;            // 10 GSR okumasının toplamı
+int gsrAverageRaw = 0;        // Ortalama ham GSR değeri (10 okumadan)
+int gsr_value = 0;      // Seri porta yazdırılacak son hesaplanan ve ölçeklenmiş GSR değeri
+unsigned long lastGsrReadMillis = 0; // Son GSR okuma zamanı
+const long gsrReadInterval = 500;    // GSR okuma aralığı (milisaniye), ~3 Hz için
 
 // --- Seri Port Yazdırma Zamanlaması (Ana Veri Akışı) ---
 unsigned long lastPpgPrintMillis = 0;   // Son ana veri yazdırma zamanı
@@ -145,7 +146,9 @@ void connectToMQTT(){
       WiFi.mode(WIFI_STA);
       Serial.print("ESP32 MAC Adress: ");
       mac_adress= WiFi.macAddress();
-      Serial.println(mac_adress);
+      //Serial.println(mac_adress);
+      //mac_payload = mac_adress.c_str();
+
  }
 
 // void get_user_name(){
@@ -192,7 +195,7 @@ void setup() {
 }
 
 // Bu fonksiyonu loop() fonksiyonundan önce veya global alanda tanımlayın
-void publishSensorData(long ir, int bpm, int gsr){//, char* user_name_param //int gsr) {
+void publishSensorData(long ir, int bpm, int gsr, char* user_name_param, const char* mac) {
     // StaticJsonDocument<200> data; // Zaten globalde tanımlı, burada tekrar tanımlamaya gerek yok.
     data.clear(); // Her yeni mesaj için JSON belgesini temizle
 
@@ -201,7 +204,8 @@ void publishSensorData(long ir, int bpm, int gsr){//, char* user_name_param //in
     data["bpm"] = bpm;
     data["gsr_value"] = gsr;
     data["timestamp"] = millis(); // İsteğe bağlı: Verinin zaman damgası
-    //data["user_name"]= user_name_param;
+    data["user_name"]= user_name_param;
+    data["mac_adress"]= mac;
 
 
     // JSON belgesini bir String'e dönüştür
@@ -288,17 +292,17 @@ void loop() {
                     lastBeatTime = currentMillis; 
                 }
 
-                int gsrValue= 8000;
+               
 
-                // if (currentMillis - lastGsrReadMillis >= gsrReadInterval) {
-                //     lastGsrReadMillis = currentMillis; 
-                //     gsrRawSum = 0;
-                //     for (int i = 0; i < 10; i++) { 
-                //         gsrRawSum += analogRead(GSR_PIN);
-                //     }
-                //     gsrAverageRaw = gsrRawSum / 10;
-                //     gsrValueToPrint = map(gsrAverageRaw, 0, 4095, 0, 1023); 
-                // }
+                if (currentMillis - lastGsrReadMillis >= gsrReadInterval) {
+                    lastGsrReadMillis = currentMillis; 
+                    gsrRawSum = 0;
+                    for (int i = 0; i < 10; i++) { 
+                        gsrRawSum += analogRead(GSR_PIN);
+                    }
+                    gsrAverageRaw = gsrRawSum / 10;
+                    gsr_value = map(gsrAverageRaw, 0, 4095, 0, 1023); 
+                }
                 
 
                 if (currentMillis - lastPpgPrintMillis >= ppgPrintInterval) {
@@ -307,9 +311,9 @@ void loop() {
                     Serial.print(",");
                     Serial.print(averageBPM); 
                     Serial.print(",");
-                    Serial.println(gsrValue); 
+                    Serial.println(gsr_value); 
                    if (client.connected()) {
-                    publishSensorData(irValue, averageBPM, gsrValue); // MQTT'ye gönder
+                    publishSensorData(irValue, averageBPM, gsr_value, user_name, mac_adress.c_str()); // MQTT'ye gönder
                 } else {
                     Serial.println("MQTT not connected to HiveMQ, data not published."); // BU MESAJI GÖRMELİSİN EĞER BAĞLI DEĞİLSE
                 }
